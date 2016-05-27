@@ -3,6 +3,7 @@ import html2text
 import sys
 import re
 from time import mktime
+from dateutil import parser
 from datetime import datetime, timedelta
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, desc
 from . import Base
@@ -106,31 +107,31 @@ class Feed(Base):
             modified = self.header_modified
             etag = self.header_etag
 
-        feed = feedparser.parse(self.url, modified=modified, etag=etag)
+        feed = feedparser.parse(self.url, etag, modified)
 
         for item in feed['entries']:
-            # Get the content, prefer plan text
-            for c in item.content:
-                if c.type == 'text/plain':
-                    content = c.value
-                    break
-                elif c.type == 'text/html':
-                    content = html2text.html2text(c.value)
-                    break
-                else:
-                    continue
+            if datetime.fromtimestamp(mktime(item['updated_parsed'])) >= parser.parse(modified):
+                # Get the content, prefer plan text
+                for c in item.content:
+                    if c.type == 'text/plain':
+                        content = c.value
+                        break
+                    elif c.type == 'text/html':
+                        content = html2text.html2text(c.value)
+                        break
+                    else:
+                        continue
 
-            if 'content' in locals():
-                session.merge(FeedItem(feed_id = self.id, title = item['title'],
-                                   content = content, url = item['link'], summary = item['summary'],
-                                   author = item['author'], date_published = datetime.fromtimestamp(mktime(item['published_parsed'])),
-                                   date_updated = datetime.fromtimestamp(mktime(item['updated_parsed'])),
-                                   is_read = 0))
+                if 'content' in locals():
+                    session.merge(FeedItem(feed_id = self.id, title = item['title'],
+                                       content = content, url = item['link'], summary = item['summary'],
+                                       author = item['author'], date_published = datetime.fromtimestamp(mktime(item['published_parsed'])),
+                                       date_updated = datetime.fromtimestamp(mktime(item['updated_parsed'])),
+                                       is_read = 0))
 
         if hasattr(feed, 'etag'):
             self.header_etag = feed.etag
-        if hasattr(feed, 'modified'):
-            self.header_modified = feed.modified
+        self.header_modified = datetime.utcnow()
         session.flush()
 
     def get_items (self, session):

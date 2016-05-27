@@ -152,10 +152,12 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
     def __init__ (self, *args, **keywords):
         super(FeedItemSingleDisplay, self).__init__( *args, **keywords)
 
-    def beforeEditing(self):
-        fi = self.value
+    def create(self):
         self.title = self.add(npyscreen.FixedText, name = "Title")
         self.content = self.add(MyPager, wrap = True, autowrap = True, name = "Content")
+
+    def beforeEditing(self):
+        fi = self.value
         self.title.value = "## " + fi.title.upper() + " ##"
         self.content.values = fi.content.split('\n')
 
