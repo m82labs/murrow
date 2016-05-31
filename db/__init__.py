@@ -15,6 +15,7 @@ class session_scope():
 
     def __enter__(self):
         self.conn = sqlite3.connect(self.path)
+        self.conn.row_factory = sqlite3.Row
         self.cursor = self.conn.cursor()
         return self.cursor
 

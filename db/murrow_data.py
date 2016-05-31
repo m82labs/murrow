@@ -108,15 +108,16 @@ def update_feeditems(session, id):
     :param session: SQLAlchemy Session
     :return: NA
     """
-    params = (id,)
+    header_get_params = (id,)
 
     feed_get_headers_qry = 'SELECT header_modified, header_etag, url FROM Feed WHERE feed_id = ?;'
     feeditem_upsert_qry = '''
     INSERT OR REPLACE INTO FeedItem ( feed_id, title, content, url, summary, author, date_published, date_updated )
     ( ?, ?, ?, ?, ?, ?, ?, ?);
     '''
+    feed_header_upsert_qry = 'INSERT OR REPLACE INT Feed ( feed_id, header_etag, header_updated ) VALUES ( ?, ?, ?);'
 
-    session.execute(feed_get_headers_qry, params)
+    session.execute(feed_get_headers_qry, header_get_params)
     headers = session.fetchone()
 
     modified = unicode(headers[0])
@@ -141,17 +142,20 @@ def update_feeditems(session, id):
                 content = ""
 
             if 'content' in locals():
-                session.merge(FeedItem(feed_id = self.id, title = item['title'],
-                                   content = content, url = item['link'], summary = item['summary'],
-                                   author = item['author'], date_published = datetime.fromtimestamp(mktime(item['published_parsed'])),
-                                   date_updated = datetime.fromtimestamp(mktime(item['updated_parsed']))
-                                      )
-                              )
+                upsert_params = (id, item['title'], content, item['link'],
+                                 item['summary'], item['author'],
+                                 datetime.fromtimestamp(mktime(item['published_parsed'])),
+                                 datetime.fromtimestamp(mktime(item['updated_parsed'])))
+                session.execute(feeditem_upsert_qry, upsert_params)
 
         if hasattr(feed, 'etag'):
-            self.header_etag = feed.etag
-        self.header_modified = feed.modified
-        session.flush()
+            new_etag = feed.etag
+        else:
+            new_etag = None
+
+        new_modified = feed.modified
+        header_upsert_params = (id, new_etag, new_modified)
+        session.execute(feed_header_upsert_qry, header_upsert_params)
         return len(feed['entries'])
     else:
         return 0
