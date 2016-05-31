@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import npyscreen
 import curses.ascii
+import time
 import db.murrow_data as md
 from db import session_scope
 
@@ -46,8 +47,9 @@ class FeedListDisplay(npyscreen.FormMuttActive):
             "q": self.parentApp.exit_app,
             "a": self.c_add_feed_form
         })
-        self.wStatus1.value = "[Murrow] Feeds"
-        self.wStatus2.value = "<a>dd <d>elete <q>uit"
+        # --========= Set title and shortcut help bar text =========-- #
+        self.wStatus1.value = "[Murrow] Feeds "
+        self.wStatus2.value = "a:Add   d:Delete   q:Quit "
         self.c_show_feeds()
 
     def beforeEditing(self, *args, **keywords):
@@ -75,8 +77,7 @@ class FeedItemList(npyscreen.MultiLineAction):
     def __init__ (self, *args, **keywords):
         super(FeedItemList, self).__init__(*args, **keywords)
         self.add_handlers({
-            "q": self.parent.parentApp.exit_app,
-            "b": self.go_back,
+            "q": self.go_back,
             "u": self.c_update_feed
         })
 
@@ -102,7 +103,13 @@ class FeedItemList(npyscreen.MultiLineAction):
     def c_update_feed (self, *args, **keywords):
         npyscreen.notify("Retrieving new feed items...", title = 'Status')
         with session_scope() as session:
-            self.parent.value.update_items(session)
+            feed = md.get_feed(session, self.parent.value.id).one()
+            item_count = feed.update_items(session)
+        if item_count > 0:
+            npyscreen.notify("Feed updated", title = 'Status')
+        else:
+            npyscreen.notify("No new, or updated, items", title = 'Status')
+        time.sleep(0.5)
         self.parent.c_show_feed_items()
 
     def go_back (self, *args, **keywords):
@@ -118,11 +125,13 @@ class FeedItemListDisplay(npyscreen.FormMuttActive):
 
     def __init__(self, *args, **keywords):
         super(FeedItemListDisplay, self).__init__(*args, **keywords)
-        self.wStatus2.value = "<b>ack, <u>pdate feed, <q>uit"
+        # --========= Set shortcut help bar text =========-- #
+        self.wStatus2.value = "q:Go Back   u:Update Feed "
 
     def beforeEditing(self):
         feed = self.value
-        self.wStatus1.value = unicode("[Murrow] {} {}").format(
+        # --========= Set title bar text =========-- #
+        self.wStatus1.value = unicode("[Murrow] {} {} ").format(
             feed.title,
             '-' + feed.description if len(feed.description) > 0 else ''
         )
@@ -151,6 +160,11 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
 
     def __init__ (self, *args, **keywords):
         super(FeedItemSingleDisplay, self).__init__( *args, **keywords)
+        self.add_handlers({
+            "q": self.on_ok,
+            "w": self.on_cancel,
+            "?": self.get_help
+        })
 
     def create(self):
         self.title = self.add(npyscreen.FixedText, name = "Title")
@@ -160,6 +174,9 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         fi = self.value
         self.title.value = "## " + fi.title.upper() + " ##"
         self.content.values = fi.content.split('\n')
+
+    def get_help(self, *args, **keywords):
+        npyscreen.notify_confirm(title="Help", message = "q: Quit\nw: Leave unread")
 
     def on_ok(self, * args, **keywords):
         with session_scope() as session:

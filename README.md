@@ -6,5 +6,8 @@ A simple curses-based RSS feed aggregator. This is an educational project, more 
 - "Time-line" style view
 - Notifications
 - Custom tags
+- Notes
+- PushBullet integration (push to pocket)
+- Pocket Integration (read from pocket)
 
 For now though, you can just read the feeds. :)

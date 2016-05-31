@@ -5,8 +5,6 @@ import re
 from time import mktime
 from dateutil import parser
 from datetime import datetime, timedelta
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, desc
-from . import Base
 
 
 def is_valid_url(url):
@@ -20,18 +18,40 @@ def is_valid_url(url):
     return url is not None and regex.search(url)
 
 
+def delete_feed(session, id):
+    """
+    Deletes a selected feed.
+    :param id: id of feed to delete
+    :return: NA
+    """
+    feedItem_delete_qry = 'DELETE FROM FeedItem WHERE feed_id = ?;'
+    feed_delete_qry = 'DELETE FROM Feed WHERE feed_id = ?;'
+
+    params = (id,)
+
+    session.execute(feedItem_delete_qry,params)
+    session.execute(feed_delete_qry,params)
+
+
 def add_feed(session, url):
     """
     Adds a new feed, given a feed URL
     :param url: Feed URL
     """
+
+    feed_add_qry = '''
+    INSERT INTO Feed ( title, description, url, date_added )
+    VALUES ( ?, ?, ?, ? );'''
+
     try:
         for u in url.split(' '):
             if is_valid_url(u):
-                new_feed = Feed.fromURL(u)
-                session.add(new_feed)
-                session.flush()
-                new_feed.update_items(session, 14)
+                feed = feedparser.parse(u)
+                title = feed['channel']['title']
+                description = feed['channel']['description']
+
+                params = (title, description, u, datetime.utcnow())
+                session.execute(feed_add_qry, params)
                 return "Feed '{}' added.".format(u)
     except:
         return "Error adding feed: {}".format(sys.exc_info()[1])
@@ -43,75 +63,71 @@ def get_feed(session, id=0):
     :param id: If == 0, get all feeds, otherwise, get the specified feed
     :return: Feed[]
     """
-    if id == 0:
-        filters = (
-            Feed.id > id
-        )
-    else:
-        filters = (
-            Feed.id == id
-        )
-    return session.query(Feed).filter(filters)
+    params = (id,)
 
-def mark_as_read(session, feed_id, url):
+    feed_get_qry = '''
+    SELECT  feed_id,
+            title,
+            description,
+            url,
+            date_added,
+            header_modified,
+            header_etag,
+            ( SELECT COUNT(1) FROM FeedItem WHERE is_read = 0 AND feed_id = Feed.feed_id ) AS unread_count
+    FROM    Feed'''
+
+    feed_get_all_qry = '''
+    WHERE   0 = ?;
+    '''
+
+    feed_get_single_qry = '''
+    WHERE   feed_id = ?;
+    '''
+
+    if id == 0:
+        final_qry = feed_get_qry + feed_get_all_qry
+    else:
+        final_qry = feed_get_qry + feed_get_single_qry
+
+    session.execute(final_qry, params)
+    return session.fetchall()
+
+
+def mark_as_read(session, id):
     """
     Marks a given feeditem as read.
     """
-    feeditem = session.query(FeedItem).filter(FeedItem.feed_id == feed_id, FeedItem.url == url).one()
-    feeditem.is_read = 1
+    params = (id,)
+    feeditem_update_qry = 'UPDATE FeedItem SET is_read = 1 WHERE feeditem_id = ?;'
+    session.execute(feeditem_update_qry, params)
 
 
-class Feed(Base):
+def update_feeditems(session, id):
     """
-    Concerns:
-    - Providing data on a specific feed
-    - Adding new feed items
-    - Retrieving feed items
+    Adds new feed items to the database for this feed.
+    :param session: SQLAlchemy Session
+    :return: NA
     """
-    __tablename__ = 'Feed'
+    params = (id,)
 
-    id = Column(Integer, unique=True, primary_key=True)
-    title = Column(String)
-    description = Column(String)
-    url = Column(String, unique=True)
-    date_added = Column(DateTime)
-    header_modified = Column(String)
-    header_etag = Column(String)
+    feed_get_headers_qry = 'SELECT header_modified, header_etag, url FROM Feed WHERE feed_id = ?;'
+    feeditem_upsert_qry = '''
+    INSERT OR REPLACE INTO FeedItem ( feed_id, title, content, url, summary, author, date_published, date_updated )
+    ( ?, ?, ?, ?, ?, ?, ?, ?);
+    '''
 
-    @classmethod
-    def fromURL(self, u):
-        """
-        Generates an instance of Feed based on a given
-        feed url.
-        """
-        feed = feedparser.parse(u)
-        title = feed['channel']['title']
-        description = feed['channel']['description']
+    session.execute(feed_get_headers_qry, params)
+    headers = session.fetchone()
 
-        return Feed(title=title, description=description, url=u, date_added=datetime.utcnow())
+    modified = unicode(headers[0])
+    etag = unicode(headers[1])
 
-    def update_items(self,session,days=0):
-        """
-        Adds new feed items to the database for this feed.
-        :param session: SQLAlchemy Session
-        :param days: Number of days to look back for new feed items.
-        If this is set to 0, it will check the feed headers to see
-        if the feed has been modified.
+    feed = feedparser.parse(headers[2], etag = etag, modified = modified)
 
-        :return: NA
-        """
-        if days > 0:
-            modified = str(datetime.utcnow() - timedelta(days=days))
-            etag = ''
-        else:
-            modified = self.header_modified
-            etag = self.header_etag
-
-        feed = feedparser.parse(self.url, etag, modified)
-
+    if feed.status == 200:
         for item in feed['entries']:
-            if datetime.fromtimestamp(mktime(item['updated_parsed'])) >= parser.parse(modified):
-                # Get the content, prefer plan text
+            # Get the content, prefer plan text
+            if hasattr(item,"content"):
                 for c in item.content:
                     if c.type == 'text/plain':
                         content = c.value
@@ -121,36 +137,38 @@ class Feed(Base):
                         break
                     else:
                         continue
+            else:
+                content = ""
 
-                if 'content' in locals():
-                    session.merge(FeedItem(feed_id = self.id, title = item['title'],
-                                       content = content, url = item['link'], summary = item['summary'],
-                                       author = item['author'], date_published = datetime.fromtimestamp(mktime(item['published_parsed'])),
-                                       date_updated = datetime.fromtimestamp(mktime(item['updated_parsed'])),
-                                       is_read = 0))
+            if 'content' in locals():
+                session.merge(FeedItem(feed_id = self.id, title = item['title'],
+                                   content = content, url = item['link'], summary = item['summary'],
+                                   author = item['author'], date_published = datetime.fromtimestamp(mktime(item['published_parsed'])),
+                                   date_updated = datetime.fromtimestamp(mktime(item['updated_parsed']))
+                                      )
+                              )
 
         if hasattr(feed, 'etag'):
             self.header_etag = feed.etag
-        self.header_modified = datetime.utcnow()
+        self.header_modified = feed.modified
         session.flush()
+        return len(feed['entries'])
+    else:
+        return 0
 
-    def get_items (self, session):
-        """
-        Retrieves feed items for a given feed.
-        :return: FeedItem[]
-        """
-        return session.query(FeedItem).order_by(desc(FeedItem.date_published)).filter(FeedItem.feed_id == self.id)
+def get_item_list(session, id):
+    """
+    Retrieves feed items for a given feed.
+    """
+    params = (id,)
 
+    feeditem_get_list_qry = '''
+    SELECT  feeditem_id,
+            date_updated,
+            is_read,
+            title
+    FROM    FeedItem
+    WHERE   feed_id = ?;'''
 
-class FeedItem(Base):
-    __tablename__ = 'FeedItem'
-
-    feed_id = Column(Integer,ForeignKey("Feed.id"), nullable=False, primary_key = True)
-    title = Column(String)
-    content = Column(String)
-    summary = Column(String)
-    url = Column(String, unique=True, primary_key = True)
-    author = Column(String)
-    date_published = Column(DateTime)
-    date_updated = Column(DateTime)
-    is_read = Column(Boolean)
+    session.execute(feeditem_get_list_qry, params)
+    return session.fetchall()
