@@ -8,7 +8,7 @@ class session_scope():
     """
     Simple CM for sqlite3 databases. Commits everything at exit.
     """
-    def __init__(self, path):
+    def __init__(self, path = db_path):
         self.path = path
         self.conn = None
         self.cursor = None
@@ -50,7 +50,7 @@ def initdb(path = db_path):
         author TEXT,
         date_published TEXT,
         date_updated TEXT,
-        is_read INTEGER DEFAULT(1),
+        is_read INTEGER DEFAULT(0),
         PRIMARY KEY (feeditem_id),
         CONSTRAINT uix_0 UNIQUE (feed_id, url),
         FOREIGN KEY(feed_id) REFERENCES "Feed" (feed_id),

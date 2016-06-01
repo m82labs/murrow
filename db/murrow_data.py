@@ -29,8 +29,8 @@ def delete_feed(session, id):
 
     params = (id,)
 
-    session.execute(feedItem_delete_qry,params)
-    session.execute(feed_delete_qry,params)
+    session.execute(feedItem_delete_qry, params)
+    session.execute(feed_delete_qry, params)
 
 
 def add_feed(session, url):
@@ -93,15 +93,6 @@ def get_feed(session, id=0):
     return session.fetchall()
 
 
-def mark_as_read(session, id):
-    """
-    Marks a given feeditem as read.
-    """
-    params = (id,)
-    feeditem_update_qry = 'UPDATE FeedItem SET is_read = 1 WHERE feeditem_id = ?;'
-    session.execute(feeditem_update_qry, params)
-
-
 def update_feeditems(session, id):
     """
     Adds new feed items to the database for this feed.
@@ -113,9 +104,13 @@ def update_feeditems(session, id):
     feed_get_headers_qry = 'SELECT header_modified, header_etag, url FROM Feed WHERE feed_id = ?;'
     feeditem_upsert_qry = '''
     INSERT OR REPLACE INTO FeedItem ( feed_id, title, content, url, summary, author, date_published, date_updated )
-    ( ?, ?, ?, ?, ?, ?, ?, ?);
+    VALUES ( ?, ?, ?, ?, ?, ?, ?, ?);
     '''
-    feed_header_upsert_qry = 'INSERT OR REPLACE INT Feed ( feed_id, header_etag, header_updated ) VALUES ( ?, ?, ?);'
+    feed_header_upsert_qry = '''
+    UPDATE Feed
+    SET header_etag = ?,
+    header_modified = ?
+    WHERE feed_id = ?;'''
 
     session.execute(feed_get_headers_qry, header_get_params)
     headers = session.fetchone()
@@ -154,11 +149,12 @@ def update_feeditems(session, id):
             new_etag = None
 
         new_modified = feed.modified
-        header_upsert_params = (id, new_etag, new_modified)
+        header_upsert_params = (new_etag, new_modified, id)
         session.execute(feed_header_upsert_qry, header_upsert_params)
         return len(feed['entries'])
     else:
         return 0
+
 
 def get_item_list(session, id):
     """
@@ -176,3 +172,33 @@ def get_item_list(session, id):
 
     session.execute(feeditem_get_list_qry, params)
     return session.fetchall()
+
+
+def get_feed_item(session, id):
+    """
+    Retrieves a single feed item.
+    """
+    params = (id,)
+
+    feeditem_get_qry = '''
+    SELECT  feeditem_id,
+            title,
+            content,
+            author,
+            url,
+            date_published,
+            date_updated
+    FROM    FeedItem
+    WHERE   feeditem_id = ?;'''
+
+    session.execute(feeditem_get_qry, params)
+    return session.fetchone()
+
+
+def mark_as_read(session, id):
+    """
+    Marks a given feeditem as read.
+    """
+    params = (id,)
+    feeditem_update_qry = 'UPDATE FeedItem SET is_read = 1 WHERE feeditem_id = ?;'
+    session.execute(feeditem_update_qry, params)

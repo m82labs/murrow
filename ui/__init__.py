@@ -1,18 +1,8 @@
 #!/usr/bin/env python
 import npyscreen
-import curses.ascii
 import time
 import db.murrow_data as md
 from db import session_scope
-
-
-class CommandProcessor(npyscreen.ActionControllerSimple):
-    """
-    Default command processor
-    """
-    def create(self):
-        self.add_action('^/feeds.*', self.parent.c_show_feeds, False)
-        self.add_action('^/add.*', self.parent.c_add_feed, False)
 
 
 class FeedList(npyscreen.MultiLineAction):
@@ -22,11 +12,9 @@ class FeedList(npyscreen.MultiLineAction):
     def display_value(self, vl):
         """
         Override the default display with a unicode variant.
-        :param vl:
-        :return:
         """
         try:
-            r_str = "{0:3} | ".format(vl.id) + vl.title
+            r_str = "{0:3} | ".format(vl['feed_id']) + vl['title']
             return unicode(r_str)
         except ReferenceError:
             return '****REFERENCE ERROR****'
@@ -38,8 +26,6 @@ class FeedList(npyscreen.MultiLineAction):
 
 class FeedListDisplay(npyscreen.FormMuttActive):
     MAIN_WIDGET_CLASS = FeedList
-    ACTION_CONTROLLER = CommandProcessor
-    DATA_CONTROLER = md.Feed
 
     def __init__(self, *args, **keywords):
         super(FeedListDisplay, self).__init__(*args, **keywords)
@@ -104,7 +90,7 @@ class FeedItemList(npyscreen.MultiLineAction):
         npyscreen.notify("Retrieving new feed items...", title = 'Status')
         with session_scope() as session:
             feed = md.get_feed(session, self.parent.value.id).one()
-            item_count = feed.update_items(session)
+            item_count = md.update_items(session, feed['feed_id'])
         if item_count > 0:
             npyscreen.notify("Feed updated", title = 'Status')
         else:
@@ -121,7 +107,6 @@ class FeedItemList(npyscreen.MultiLineAction):
 class FeedItemListDisplay(npyscreen.FormMuttActive):
     MAIN_WIDGET_CLASS = FeedItemList
     # ACTION_CONTROLLER = CommandProcessor
-    DATA_CONTROLER = md.FeedItem
 
     def __init__(self, *args, **keywords):
         super(FeedItemListDisplay, self).__init__(*args, **keywords)
@@ -132,15 +117,15 @@ class FeedItemListDisplay(npyscreen.FormMuttActive):
         feed = self.value
         # --========= Set title bar text =========-- #
         self.wStatus1.value = unicode("[Murrow] {} {} ").format(
-            feed.title,
-            '-' + feed.description if len(feed.description) > 0 else ''
+            feed['title'],
+            '-' + feed['description'] if len(feed['description']) > 0 else ''
         )
         self.c_show_feed_items()
 
     def c_show_feed_items(self):
         feed = self.value
         with session_scope() as session:
-            feeditems = feed.get_items(session)
+            feeditems = md.get_item_list(session, feed['feed_id'])
 
         self.wMain.values = [i for i in feeditems]
         self.wMain.display()
@@ -156,7 +141,6 @@ class MyPager(npyscreen.Pager):
 
 class FeedItemSingleDisplay(npyscreen.ActionForm):
     OK_BUTTON_TEXT = 'Done'
-    DATA_CONTROLER = md.FeedItem
 
     def __init__ (self, *args, **keywords):
         super(FeedItemSingleDisplay, self).__init__( *args, **keywords)
@@ -172,15 +156,15 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
 
     def beforeEditing(self):
         fi = self.value
-        self.title.value = "## " + fi.title.upper() + " ##"
-        self.content.values = fi.content.split('\n')
+        self.title.value = "## " + fi['title'].upper() + " ##"
+        self.content.values = fi['content'].split('\n')
 
     def get_help(self, *args, **keywords):
         npyscreen.notify_confirm(title="Help", message = "q: Quit\nw: Leave unread")
 
     def on_ok(self, * args, **keywords):
         with session_scope() as session:
-            md.mark_as_read(session, self.value.feed_id, self.value.url)
+            md.mark_as_read(session, self.value['feed_id'], self.value['url'])
         self.parentApp.switchFormPrevious()
 
     def on_cancel(self, *args, **keywords):
