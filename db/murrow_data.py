@@ -100,7 +100,6 @@ def update_feeditems(session, id):
     :return: NA
     """
     header_get_params = (id,)
-
     feed_get_headers_qry = 'SELECT header_modified, header_etag, url FROM Feed WHERE feed_id = ?;'
     feeditem_upsert_qry = '''
     INSERT OR REPLACE INTO FeedItem ( feed_id, title, content, url, summary, author, date_published, date_updated )

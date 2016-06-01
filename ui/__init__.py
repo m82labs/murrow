@@ -35,7 +35,7 @@ class FeedListDisplay(npyscreen.FormMuttActive):
         })
         # --========= Set title and shortcut help bar text =========-- #
         self.wStatus1.value = "[Murrow] Feeds "
-        self.wStatus2.value = "a:Add   d:Delete   q:Quit "
+        self.wStatus2.value = "a:Add   q:Quit "
         self.c_show_feeds()
 
     def beforeEditing(self, *args, **keywords):
@@ -64,8 +64,10 @@ class FeedItemList(npyscreen.MultiLineAction):
         super(FeedItemList, self).__init__(*args, **keywords)
         self.add_handlers({
             "q": self.go_back,
-            "u": self.c_update_feed
+            "u": self.c_update_feed,
+            "d": self.c_delete_feed
         })
+
 
     def display_value (self, vl):
         """
@@ -75,9 +77,9 @@ class FeedItemList(npyscreen.MultiLineAction):
         """
         try:
             return unicode("{} |{}| {}").format(
-                vl.date_published,
-                ' ' if vl.is_read else 'U',
-                vl.title
+                vl[1],
+                ' ' if vl[2] else 'U',
+                vl[3]
             )
         except ReferenceError:
             return '****REFERENCE ERROR****'
@@ -86,11 +88,17 @@ class FeedItemList(npyscreen.MultiLineAction):
         self.parent.parentApp.getForm('FEEDITEM').value = choice
         self.parent.parentApp.switchForm('FEEDITEM')
 
+    def c_delete_feed(self, *args, **keywords):
+        with session_scope() as session:
+            md.delete_feed(session, self.parent.value['feed_id'])
+        self.parent.parentApp.switchFormPrevious()
+
     def c_update_feed (self, *args, **keywords):
         npyscreen.notify("Retrieving new feed items...", title = 'Status')
+
         with session_scope() as session:
-            feed = md.get_feed(session, self.parent.value.id).one()
-            item_count = md.update_items(session, feed['feed_id'])
+            feed = md.get_feed(session, self.parent.value['feed_id'])[0]
+            item_count = md.update_feeditems(session, feed['feed_id'])
         if item_count > 0:
             npyscreen.notify("Feed updated", title = 'Status')
         else:
@@ -111,7 +119,7 @@ class FeedItemListDisplay(npyscreen.FormMuttActive):
     def __init__(self, *args, **keywords):
         super(FeedItemListDisplay, self).__init__(*args, **keywords)
         # --========= Set shortcut help bar text =========-- #
-        self.wStatus2.value = "q:Go Back   u:Update Feed "
+        self.wStatus2.value = "q:Go Back   u:Update Feed   d:Delete Feed "
 
     def beforeEditing(self):
         feed = self.value
@@ -155,7 +163,10 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         self.content = self.add(MyPager, wrap = True, autowrap = True, name = "Content")
 
     def beforeEditing(self):
-        fi = self.value
+        with session_scope() as session:
+            fi = md.get_feed_item(session, dict(self.value)['feeditem_id'])
+
+        time.sleep(5)
         self.title.value = "## " + fi['title'].upper() + " ##"
         self.content.values = fi['content'].split('\n')
 
@@ -164,7 +175,7 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
 
     def on_ok(self, * args, **keywords):
         with session_scope() as session:
-            md.mark_as_read(session, self.value['feed_id'], self.value['url'])
+            md.mark_as_read(session, dict(self.value)['feeditem_id'])
         self.parentApp.switchFormPrevious()
 
     def on_cancel(self, *args, **keywords):
