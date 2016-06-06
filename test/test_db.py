@@ -22,9 +22,14 @@ if __name__ == '__main__':
             session.execute(table_qry.format(t,))
 
         print 'Inserting 2 feeds...'
-        print md.add_feed(session, 'http://littlekendra.com/feed')
-        print md.add_feed(session, 'http://krebsonsecurity.com/feed/')
+        feed_id = md.add_feed(session, 'http://littlekendra.com/feed')
+        md.update_feeditems(session,feed_id)
+        feed_id2 = md.add_feed(session, 'http://blogs.harvard.edu/cmusings/feed/')
+        md.update_feeditems(session, feed_id2)
         assert (len(md.get_feed(session)) == 2)
+        for f in md.get_feed(session):
+            print f
+
         for f in md.get_feed(session):
             print f
 
@@ -32,20 +37,19 @@ if __name__ == '__main__':
         md.delete_feed(session, 1)
         assert (len(md.get_feed(session)) == 1)
 
-        print 'Updating feed...'
-        md.update_feeditems(session, 2)
-
         for f in md.get_feed(session):
             print f
-            for fi in md.get_item_list(session, f[0]):
+            for fi in md.get_items(session, f[0]):
                 print fi
 
         print 'Marking an article as "Read".'
         md.mark_as_read(session,1)
         for f in md.get_feed(session):
             print f
-            for fi in md.get_item_list(session, f[0]):
+            for fi in md.get_items(session, f[0]):
                 print fi
 
-        print 'Getting a single feed item...'
-        print md.get_feed_item(session, 1)
+        print 'Updating the feed'
+        print md.update_feeditems(session, 2)
+        for f in md.get_feed(session):
+            print f

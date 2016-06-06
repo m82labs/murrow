@@ -1,6 +1,7 @@
 import feedparser
 import html2text
 import sys
+import pytz
 import re
 from time import mktime
 from dateutil import parser
@@ -52,9 +53,9 @@ def add_feed(session, url):
 
                 params = (title, description, u, datetime.utcnow())
                 session.execute(feed_add_qry, params)
-                return "Feed '{}' added.".format(u)
+                return session.lastrowid
     except:
-        return "Error adding feed: {}".format(sys.exc_info()[1])
+        return -1
 
 
 def get_feed(session, id=0):
@@ -96,7 +97,7 @@ def get_feed(session, id=0):
 def update_feeditems(session, id):
     """
     Adds new feed items to the database for this feed.
-    :param session: SQLAlchemy Session
+    :param session: SQLite Session
     :return: NA
     """
     header_get_params = (id,)
@@ -114,21 +115,23 @@ def update_feeditems(session, id):
     session.execute(feed_get_headers_qry, header_get_params)
     headers = session.fetchone()
 
-    modified = unicode(headers[0])
-    etag = unicode(headers[1])
+    modified = headers[0]
+    etag = headers[1]
 
     feed = feedparser.parse(headers[2], etag = etag, modified = modified)
-
-    if feed.status == 200:
+    if feed.status == 301 or feed.status == 200:
         for item in feed['entries']:
             # Get the content, prefer plan text
-            if hasattr(item,"content"):
+            if hasattr(item, "content"):
                 for c in item.content:
-                    if c.type == 'text/plain':
-                        content = c.value
+                    if c.type == 'text/html':
+                        h = html2text.HTML2Text()
+                        h.inline_links = False
+                        h.wrap_links = False
+                        content = h.handle(c.value)
                         break
-                    elif c.type == 'text/html':
-                        content = html2text.html2text(c.value)
+                    elif c.type == 'text/plain':
+                        content = c.value
                         break
                     else:
                         continue
@@ -147,7 +150,7 @@ def update_feeditems(session, id):
         else:
             new_etag = None
 
-        new_modified = feed.modified
+        new_modified = datetime.now(tz = pytz.timezone('GMT')).strftime('%a, %d %b %Y %H:%M:%S %Z')
         header_upsert_params = (new_etag, new_modified, id)
         session.execute(feed_header_upsert_qry, header_upsert_params)
         return len(feed['entries'])
@@ -155,7 +158,18 @@ def update_feeditems(session, id):
         return 0
 
 
-def get_item_list(session, id):
+def update_all_feeds(session):
+    """
+    Loops through and updates ALL feeds.
+    returns: Number of feed items updated.
+    """
+    updates = 0
+    for f in get_feed(session):
+        updates += update_feeditems(session, f['feed_id'])
+    return updates
+
+
+def get_items(session, id):
     """
     Retrieves feed items for a given feed.
     """
@@ -163,35 +177,19 @@ def get_item_list(session, id):
 
     feeditem_get_list_qry = '''
     SELECT  feeditem_id,
-            date_updated,
-            is_read,
-            title
-    FROM    FeedItem
-    WHERE   feed_id = ?;'''
-
-    session.execute(feeditem_get_list_qry, params)
-    return session.fetchall()
-
-
-def get_feed_item(session, id):
-    """
-    Retrieves a single feed item.
-    """
-    params = (id,)
-
-    feeditem_get_qry = '''
-    SELECT  feeditem_id,
             title,
             content,
             author,
             url,
             date_published,
-            date_updated
+            date_updated,
+            is_read
     FROM    FeedItem
-    WHERE   feeditem_id = ?;'''
+    WHERE   feed_id = ?
+    ORDER BY date_updated DESC;'''
 
-    session.execute(feeditem_get_qry, params)
-    return session.fetchone()
+    session.execute(feeditem_get_list_qry, params)
+    return session.fetchall()
 
 
 def mark_as_read(session, id):
