@@ -1,0 +1,10 @@
+{
+    "murrow_settings" : {
+        "share_settings" : {
+            "pocket_settings" : {
+                "consumer_key" : "",
+                "access_token" : ""
+            }
+        }
+    }
+}
