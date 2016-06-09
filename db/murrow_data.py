@@ -3,9 +3,10 @@ import html2text
 import sys
 import pytz
 import re
-from time import mktime
+from time import mktime,sleep
 from dateutil import parser
 from datetime import datetime, timedelta
+from db import  session_scope
 
 
 def is_valid_url(url):
@@ -168,6 +169,15 @@ def update_all_feeds(session):
         updates += update_feeditems(session, f['feed_id'])
     return updates
 
+def background_updater(minutes):
+    """
+    Loops through and updates ALL feeds.
+    """
+    while True:
+        with session_scope() as session:
+            for f in get_feed(session):
+                update_feeditems(session, f['feed_id'])
+        sleep(minutes*60)
 
 def get_items(session, id):
     """

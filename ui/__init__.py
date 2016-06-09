@@ -3,6 +3,7 @@ import npyscreen
 import time
 import db.murrow_data as md
 from db import session_scope
+from share.topocket import add_to_pocket
 
 
 class FeedList(npyscreen.MultiLineAction):
@@ -162,6 +163,7 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         self.add_handlers({
             "q": self.on_ok,
             "w": self.on_cancel,
+            "a": self.c_add_to_pocket,
             "?": self.get_help
         })
 
@@ -175,7 +177,7 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         self.content.values = fi['content'].split('\n')
 
     def get_help(self, *args, **keywords):
-        npyscreen.notify_confirm(title="Help", message = "q: Quit and mark read\nw: Leave unread")
+        npyscreen.notify_confirm(title="Help", message = "q: Quit and mark read\nw: Leave unread\na: Add to pocket")
 
     def on_ok(self, * args, **keywords):
         with session_scope() as session:
@@ -184,6 +186,13 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
 
     def on_cancel(self, *args, **keywords):
         self.parentApp.switchFormPrevious()
+
+    def c_add_to_pocket(self, *args, **keywords):
+        npyscreen.notify('Adding to Pocket...')
+        response = add_to_pocket(dict(self.value)['url'])
+        if response['status'] == 1:
+            npyscreen.notify('Added!')
+            time.sleep(1)
 
 
 class FeedAdd(npyscreen.ActionForm):
