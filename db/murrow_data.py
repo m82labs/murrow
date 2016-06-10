@@ -104,8 +104,9 @@ def update_feeditems(session, id):
     header_get_params = (id,)
     feed_get_headers_qry = 'SELECT header_modified, header_etag, url FROM Feed WHERE feed_id = ?;'
     feeditem_upsert_qry = '''
-    INSERT OR REPLACE INTO FeedItem ( feed_id, title, content, url, summary, author, date_published, date_updated )
-    VALUES ( ?, ?, ?, ?, ?, ?, ?, ?);
+    INSERT INTO FeedItem ( feed_id, title, content, url, summary, author, date_published, date_updated )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE NOT EXISTS ( SELECT 1 FROM FeedItem WHERE feed_id = ? AND url = ? );
     '''
     feed_header_upsert_qry = '''
     UPDATE Feed
@@ -143,7 +144,8 @@ def update_feeditems(session, id):
                 upsert_params = (id, item['title'], content, item['link'],
                                  item['summary'], item['author'],
                                  datetime.fromtimestamp(mktime(item['published_parsed'])),
-                                 datetime.fromtimestamp(mktime(item['updated_parsed'])))
+                                 datetime.fromtimestamp(mktime(item['updated_parsed'])),
+                                 id, item['link'])
                 session.execute(feeditem_upsert_qry, upsert_params)
 
         if hasattr(feed, 'etag'):
@@ -175,8 +177,7 @@ def background_updater(minutes):
     """
     while True:
         with session_scope() as session:
-            for f in get_feed(session):
-                update_feeditems(session, f['feed_id'])
+            updates = update_all_feeds(session)
         sleep(minutes*60)
 
 def get_items(session, id):

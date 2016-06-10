@@ -10,4 +10,5 @@ if __name__ == '__main__':
     updater.start()
     app = MurrowFeedReader()
     app.run()
+    updater.terminate()
     print "Exiting..."
