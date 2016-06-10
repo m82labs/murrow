@@ -39,6 +39,15 @@ def initdb(path = db_path):
     );
     '''
 
+    feed_Tbl_Create = '''
+        CREATE TABLE IF NOT EXISTS ReadAnalytics (
+             feeditem_id INTEGER NOT NULL,
+             word_count INTEGER,
+             time_to_read REAL,
+             date_read TEXT
+        );
+        '''
+
     feedItem_Tbl_Create = '''
     CREATE TABLE IF NOT EXISTS FeedItem (
         feeditem_id INTEGER NOT NULL,

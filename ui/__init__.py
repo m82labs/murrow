@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import npyscreen
 import time
+import datetime
 import db.murrow_data as md
 from db import session_scope
 from share.topocket import add_to_pocket
@@ -160,6 +161,8 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
 
     def __init__ (self, *args, **keywords):
         super(FeedItemSingleDisplay, self).__init__( *args, **keywords)
+        self.word_count = 0
+        self.start_read = datetime.datetime.utcnow()
         self.add_handlers({
             "q": self.on_ok,
             "w": self.on_cancel,
@@ -175,13 +178,17 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         fi = dict(self.value)
         self.title.value = "## " + fi['title'].upper() + " ##"
         self.content.values = fi['content'].split('\n')
+        self.word_count = len(fi['content'].split(' '))
+        self.start_read = datetime.datetime.utcnow()
 
     def get_help(self, *args, **keywords):
         npyscreen.notify_confirm(title="Help", message = "q: Quit and mark read\nw: Leave unread\na: Add to pocket")
 
     def on_ok(self, * args, **keywords):
+        time_to_read = (datetime.datetime.utcnow() - self.start_read).total_seconds()/60
         with session_scope() as session:
-            md.mark_as_read(session, dict(self.value)['feeditem_id'])
+            md.mark_as_read(session, dict(self.value)['feeditem_id'], self.word_count, time_to_read)
+        time.sleep(3)
         self.parentApp.switchFormPrevious()
 
     def on_cancel(self, *args, **keywords):

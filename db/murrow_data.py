@@ -203,10 +203,13 @@ def get_items(session, id):
     return session.fetchall()
 
 
-def mark_as_read(session, id):
+def mark_as_read(session, id, word_count, time_to_read):
     """
     Marks a given feeditem as read.
     """
-    params = (id,)
+    fi_params = (id,)
+    ra_params = (id, word_count, time_to_read, datetime.utcnow())
     feeditem_update_qry = 'UPDATE FeedItem SET is_read = 1 WHERE feeditem_id = ?;'
-    session.execute(feeditem_update_qry, params)
+    readanalytics_insert_qry = 'INSERT INTO ReadAnalytics ( feeditem_id, word_count, time_to_read, date_read ) VALUES ( ?, ?, ?, ?);'
+    session.execute(feeditem_update_qry, fi_params)
+    session.execute(readanalytics_insert_qry, ra_params)
