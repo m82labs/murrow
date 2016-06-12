@@ -1,12 +1,13 @@
 import feedparser
 import html2text
 import sys
+import math
 import pytz
 import re
 from time import mktime,sleep
 from dateutil import parser
 from datetime import datetime, timedelta
-from db import  session_scope
+from db import session_scope
 
 
 def is_valid_url(url):
@@ -140,12 +141,19 @@ def update_feeditems(session, id):
             else:
                 content = ""
 
+            published = None
+            updated = None
+
+            if 'published_parsed' in item:
+                published = datetime.fromtimestamp(mktime(item['published_parsed']))
+            elif 'updated_parsed' in item:
+                published = datetime.fromtimestamp(mktime(item['updated_parsed']))
+                updated = datetime.fromtimestamp(mktime(item['updated_parsed']))
+
             if 'content' in locals():
                 upsert_params = (id, item['title'], content, item['link'],
                                  item['summary'], item['author'],
-                                 datetime.fromtimestamp(mktime(item['published_parsed'])),
-                                 datetime.fromtimestamp(mktime(item['updated_parsed'])),
-                                 id, item['link'])
+                                 published, updated, id, item['link'])
                 session.execute(feeditem_upsert_qry, upsert_params)
 
         if hasattr(feed, 'etag'):
@@ -171,14 +179,28 @@ def update_all_feeds(session):
         updates += update_feeditems(session, f['feed_id'])
     return updates
 
+
+def update_read_speed(session):
+    """
+    Updates the reading speed for time estimates.
+    The initial implementation uses a global vaiable.
+    In the future, this number is calculated on a per feed basis.
+    """
+    get_read_data_qry = 'SELECT (time_to_read_sec/word_count) AS sec_word FROM ReadAnalytics;'
+    data = [i['sec_word'] for i in session.execute(get_read_data_qry)]
+    trimmed_data = sorted(data)[int(math.ceil((len(data) - 1) * .1)):int(math.floor((len(data) - 1) * .9))]
+    return sum(trimmed_data) / len(trimmed_data)
+
+
 def background_updater(minutes):
     """
-    Loops through and updates ALL feeds.
+    Loops through and updates ALL feeds
     """
     while True:
         with session_scope() as session:
             updates = update_all_feeds(session)
         sleep(minutes*60)
+
 
 def get_items(session, id):
     """
@@ -210,6 +232,6 @@ def mark_as_read(session, id, word_count, time_to_read):
     fi_params = (id,)
     ra_params = (id, word_count, time_to_read, datetime.utcnow())
     feeditem_update_qry = 'UPDATE FeedItem SET is_read = 1 WHERE feeditem_id = ?;'
-    readanalytics_insert_qry = 'INSERT INTO ReadAnalytics ( feeditem_id, word_count, time_to_read, date_read ) VALUES ( ?, ?, ?, ?);'
+    readanalytics_insert_qry = 'INSERT INTO ReadAnalytics ( feeditem_id, word_count, time_to_read_sec, date_read ) VALUES ( ?, ?, ?, ?);'
     session.execute(feeditem_update_qry, fi_params)
     session.execute(readanalytics_insert_qry, ra_params)

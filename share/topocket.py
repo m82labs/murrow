@@ -2,18 +2,19 @@
 import json
 import os
 from pocket import Pocket, PocketException
-from . import config, has_config
+from config import configuration as mconfig
 
 
 def add_to_pocket(url):
-    if has_config:
-        if 'pocket_settings' in config:
-            pocket_config = config['pocket_settings']
-            pc = Pocket(
-            consumer_key=pocket_config['consumer_key'],
-            access_token=pocket_config['access_token']
-            )
-            return pc.add( url=url )
+    if mconfig:
+        if 'share_settings' in mconfig:
+            if 'pocket' in mconfig['share_settings']:
+                pocket_config = mconfig['share_settings']['pocket']
+                pc = Pocket(
+                    consumer_key=pocket_config['consumer_key'],
+                    access_token=pocket_config['access_token']
+                )
+                return pc.add( url=url )
         else:
             return {"status":0,"message":"Pocket not configured."}
     else:

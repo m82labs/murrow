@@ -6,6 +6,9 @@ import db.murrow_data as md
 from db import session_scope
 from share.topocket import add_to_pocket
 
+# Set up a global variable to store out reading speed
+sec_per_word = 0
+
 
 class FeedList(npyscreen.MultiLineAction):
     def __init__(self, *args, **keywords):
@@ -42,6 +45,9 @@ class FeedListDisplay(npyscreen.FormMuttActive):
         self.c_show_feeds()
 
     def beforeEditing(self, *args, **keywords):
+        global sec_per_word
+        with session_scope() as session:
+            sec_per_word = md.update_read_speed(session)
         self.c_show_feeds()
 
     def c_show_feeds(self, *args, **keywords):
@@ -172,23 +178,32 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
 
     def create(self):
         self.title = self.add(npyscreen.FixedText, name = "Title")
+        self.div1 = self.add(npyscreen.FixedText, name = "Div1")
+        self.read_time = self.add(npyscreen.FixedText, name = "Read Time")
+        self.div2 = self.add(npyscreen.FixedText, name = "Div2")
         self.content = self.add(MyPager, wrap = True, autowrap = True, name = "Content")
 
     def beforeEditing(self):
+        global sec_per_word
         fi = dict(self.value)
-        self.title.value = "## " + fi['title'].upper() + " ##"
         self.content.values = fi['content'].split('\n')
         self.word_count = len(fi['content'].split(' '))
         self.start_read = datetime.datetime.utcnow()
+        self.title.value = "## " + fi['title'].upper() + " ##"
+        self.div1.value = "---"
+        self.read_time.value = "Read time ~ " + str( round(((sec_per_word*self.word_count)/60)*2.0)/2.0 ) + "minutes"
+        self.div2.value = "---"
+
 
     def get_help(self, *args, **keywords):
         npyscreen.notify_confirm(title="Help", message = "q: Quit and mark read\nw: Leave unread\na: Add to pocket")
 
     def on_ok(self, * args, **keywords):
-        time_to_read = (datetime.datetime.utcnow() - self.start_read).total_seconds()/60
+        global sec_per_word
+        time_to_read = (datetime.datetime.utcnow() - self.start_read).total_seconds()
         with session_scope() as session:
             md.mark_as_read(session, dict(self.value)['feeditem_id'], self.word_count, time_to_read)
-        time.sleep(3)
+            sec_per_word = md.update_read_speed(session)
         self.parentApp.switchFormPrevious()
 
     def on_cancel(self, *args, **keywords):
