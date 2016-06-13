@@ -98,16 +98,44 @@ def get_feed(session, id=0):
 
 def update_feeditems(session, id):
     """
-    Adds new feed items to the database for this feed.
+    Adds new feed items to the database for this feed and update the FTS index
     :param session: SQLite Session
     :return: NA
     """
     header_get_params = (id,)
+    fts_update_params = (id,)
+
     feed_get_headers_qry = 'SELECT header_modified, header_etag, url FROM Feed WHERE feed_id = ?;'
     feeditem_upsert_qry = '''
-    INSERT INTO FeedItem ( feed_id, title, content, url, summary, author, date_published, date_updated )
+    INSERT INTO FeedItem (
+        feed_id,
+        title,
+        content,
+        url,
+        summary,
+        author,
+        date_published,
+        date_updated
+    )
     SELECT ?, ?, ?, ?, ?, ?, ?, ?
-    WHERE NOT EXISTS ( SELECT 1 FROM FeedItem WHERE feed_id = ? AND url = ? );
+    WHERE NOT EXISTS (
+        SELECT  1
+        FROM    FeedItem
+        WHERE   feed_id = ?
+                AND url = ?
+    );
+    '''
+    fts_update_qry = '''
+    INSERT INTO FTS_FeedItem ( feeditem_id, content )
+    SELECT  feeditem_id,
+            content
+    FROM    FeedItem
+    WHERE   feed_id = ?
+            AND NOT EXISTS (
+                SELECT  1
+                FROM    FTS_FeedItem
+                WHERE   feeditem_id = FeedItem.Feeditem_id
+            );
     '''
     feed_header_upsert_qry = '''
     UPDATE Feed
@@ -164,6 +192,7 @@ def update_feeditems(session, id):
         new_modified = datetime.now(tz = pytz.timezone('GMT')).strftime('%a, %d %b %Y %H:%M:%S %Z')
         header_upsert_params = (new_etag, new_modified, id)
         session.execute(feed_header_upsert_qry, header_upsert_params)
+        session.execute(fts_update_qry, fts_update_params)
         return len(feed['entries'])
     else:
         return 0
@@ -194,7 +223,7 @@ def update_read_speed(session):
 
 def background_updater(minutes):
     """
-    Loops through and updates ALL feeds
+    Runs background update tasks, currently only feed updates
     """
     while True:
         with session_scope() as session:
@@ -215,13 +244,58 @@ def get_items(session, id):
             author,
             url,
             date_published,
-            date_updated,
+            IFNULL(date_updated,date_published) AS date_updated,
             is_read
     FROM    FeedItem
     WHERE   feed_id = ?
     ORDER BY date_updated DESC;'''
 
     session.execute(feeditem_get_list_qry, params)
+    return session.fetchall()
+
+
+def search_items(session, search_qry):
+    """
+    Does a full text search based on the users query.
+    @search_qry: comma separated list of search terms
+    """
+    fts_query = '''
+    SELECT  feeditem_id,
+            title,
+            content,
+            author,
+            url,
+            date_published,
+            IFNULL(date_updated,date_published) AS date_updated,
+            is_read
+    FROM    FeedItem
+    WHERE   feeditem_id IN (
+            SELECT  feeditem_id
+            FROM    FTS_FeedItem
+            WHERE   content MATCH ?
+    )
+    ORDER BY date_updated DESC;'''
+    search_str = '('
+    last_op = None
+    closing_paren = ')'
+    for term in (reversed(sorted(search_qry.split(',')))):
+        operator = 'OR'
+        if search_str == '(':
+            search_str += ' "' + term + '" '
+        else:
+            if '+' in term:
+                term = term.replace('+', '')
+                operator = 'AND'
+                closing_paren = ''
+                if last_op != operator:
+                    search_str += ") "
+
+            search_str += operator + ' "' + term + '" '
+        last_op = operator
+
+    search_str += closing_paren
+
+    session.execute(fts_query, (search_str,))
     return session.fetchall()
 
 

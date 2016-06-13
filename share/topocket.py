@@ -5,7 +5,7 @@ from pocket import Pocket, PocketException
 from config import configuration as mconfig
 
 
-def add_to_pocket(url):
+def send_to_pocket(url):
     if mconfig:
         if 'share_settings' in mconfig:
             if 'pocket' in mconfig['share_settings']:

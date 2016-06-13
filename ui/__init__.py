@@ -4,10 +4,22 @@ import time
 import datetime
 import db.murrow_data as md
 from db import session_scope
-from share.topocket import add_to_pocket
+from share.topocket import send_to_pocket
 
 # Set up a global variable to store out reading speed
 sec_per_word = 0
+
+
+class SearchController(npyscreen.ActionControllerSimple):
+    def create(self):
+        self.add_action('^Search: ..*', self.run_search, False)
+
+    def run_search(self, command_line, widget_proxy, live):
+        print "test"
+        search_qry = command_line[8:]
+        search_req = [-1, {'title': 'Search', 'description': 'Results'}, search_qry]
+        self.parent.parentApp.getForm('FEEDITEMLIST').value = search_req
+        self.parent.parentApp.switchForm('FEEDITEMLIST')
 
 
 class FeedList(npyscreen.MultiLineAction):
@@ -31,6 +43,7 @@ class FeedList(npyscreen.MultiLineAction):
 
 class FeedListDisplay(npyscreen.FormMuttActive):
     MAIN_WIDGET_CLASS = FeedList
+    ACTION_CONTROLLER = SearchController
 
     def __init__(self, *args, **keywords):
         super(FeedListDisplay, self).__init__(*args, **keywords)
@@ -49,6 +62,7 @@ class FeedListDisplay(npyscreen.FormMuttActive):
         with session_scope() as session:
             sec_per_word = md.update_read_speed(session)
         self.c_show_feeds()
+        self.wCommand.value = "Search: "
 
     def c_show_feeds(self, *args, **keywords):
         with session_scope() as session:
@@ -62,6 +76,7 @@ class FeedListDisplay(npyscreen.FormMuttActive):
         with session_scope() as session:
             updates = md.update_all_feeds(session)
         npyscreen.notify("{} updates applied.".format(updates), title = 'Status')
+        time.sleep(0.75)
         self.c_show_feeds()
 
     def c_add_feed(self, command_line, widget_proxy, live):
@@ -92,9 +107,9 @@ class FeedItemList(npyscreen.MultiLineAction):
         """
         try:
             return unicode("{} |{}| {}").format(
-                vl[6],
-                ' ' if vl[7] else 'U',
-                vl[1]
+                vl['date_updated'],
+                ' ' if vl['is_read'] else 'U',
+                vl['title']
             )
         except ReferenceError:
             return '****REFERENCE ERROR****'
@@ -104,12 +119,13 @@ class FeedItemList(npyscreen.MultiLineAction):
         self.parent.parentApp.switchForm('FEEDITEM')
 
     def c_delete_feed(self, *args, **keywords):
-        with session_scope() as session:
-            md.delete_feed(session, self.parent.value[1]['feed_id'])
-        self.parent.parentApp.switchFormPrevious()
+        if npyscreen.notify_yes_no('Are you sure you want to remove this feed?', title='Confirm Delete'):
+            with session_scope() as session:
+                md.delete_feed(session, self.parent.value[1]['feed_id'])
+            self.parent.parentApp.switchFormPrevious()
 
     def c_update_feed (self, *args, **keywords):
-        npyscreen.notify("Retrieving new feed items...", title = 'Status')
+        npyscreen.notify(message = "Retrieving new feed items...", title = 'Status')
 
         with session_scope() as session:
             feed = md.get_feed(session, self.parent.value[1]['feed_id'])[0]
@@ -118,7 +134,7 @@ class FeedItemList(npyscreen.MultiLineAction):
             npyscreen.notify("Feed updated", title = 'Status')
         else:
             npyscreen.notify("No new, or updated, items", title = 'Status')
-        time.sleep(0.5)
+        time.sleep(0.75)
         self.parent.c_show_feed_items()
 
     def go_back (self, *args, **keywords):
@@ -129,7 +145,7 @@ class FeedItemList(npyscreen.MultiLineAction):
 
 class FeedItemListDisplay(npyscreen.FormMuttActive):
     MAIN_WIDGET_CLASS = FeedItemList
-    # ACTION_CONTROLLER = CommandProcessor
+    ACTION_CONTROLLER = SearchController
 
     def __init__(self, *args, **keywords):
         super(FeedItemListDisplay, self).__init__(*args, **keywords)
@@ -143,12 +159,21 @@ class FeedItemListDisplay(npyscreen.FormMuttActive):
             feed['title'],
             '- ' + feed['description'] if len(feed['description']) > 0 else ''
         )
+        self.wCommand.value = "Search: "
         self.c_show_feed_items()
 
     def c_show_feed_items(self):
-        feed = self.value[1]
-        with session_scope() as session:
-            feeditems = md.get_items(session, feed['feed_id'])
+        feeditems = None
+
+        if len(self.value) == 3:
+            if self.value[0] == -1:
+                search_qry = self.value[2]
+                with session_scope() as session:
+                    feeditems = md.search_items(session, search_qry)
+        else:
+            feed = self.value[1]
+            with session_scope() as session:
+                feeditems = md.get_items(session, feed['feed_id'])
 
         self.wMain.values = [i for i in feeditems]
         self.wMain.display()
@@ -172,15 +197,20 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         self.add_handlers({
             "q": self.on_ok,
             "w": self.on_cancel,
-            "a": self.c_add_to_pocket,
+            "i": self.show_info,
+            "a": self.c_send_to_pocket,
             "?": self.get_help
         })
 
     def create(self):
         self.title = self.add(npyscreen.FixedText, name = "Title")
-        self.div1 = self.add(npyscreen.FixedText, name = "Div1")
+        self.title.editable = False
+        self.author = self.add(npyscreen.TreeLine, name = "Author")
+        self.author.editable = False
         self.read_time = self.add(npyscreen.FixedText, name = "Read Time")
+        self.read_time.editable = False
         self.div2 = self.add(npyscreen.FixedText, name = "Div2")
+        self.div2.editable = False
         self.content = self.add(MyPager, wrap = True, autowrap = True, name = "Content")
 
     def beforeEditing(self):
@@ -189,14 +219,31 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         self.content.values = fi['content'].split('\n')
         self.word_count = len(fi['content'].split(' '))
         self.start_read = datetime.datetime.utcnow()
-        self.title.value = "## " + fi['title'].upper() + " ##"
-        self.div1.value = "---"
+        self.title.value = fi['title'].upper()
+        self.author.value = fi['author']
         self.read_time.value = "Read time ~ " + str( round(((sec_per_word*self.word_count)/60)*2.0)/2.0 ) + "minutes"
-        self.div2.value = "---"
-
+        self.div2.value = "\n"
 
     def get_help(self, *args, **keywords):
-        npyscreen.notify_confirm(title="Help", message = "q: Quit and mark read\nw: Leave unread\na: Add to pocket")
+        npyscreen.notify_confirm(
+            title="Help",
+            message = "q: Quit and mark read\n" +
+                      "w: Leave unread\n" +
+                      "i: Show feed information\n" +
+                      "a: Add to pocket"
+        )
+
+    def show_info(self, *args, **keywords):
+        fi = dict(self.value)
+        npyscreen.notify_confirm(
+            title = "Feed Item Information",
+            message = "Title: " + fi['title'] +
+                      "\nAuthor: " + fi['author'] +
+                      "\nURL: " + fi['url'] +
+                      "\nWord Count: " + unicode(self.word_count) +
+                      "\nPublished: " + fi['date_published'],
+            wide = True
+        )
 
     def on_ok(self, * args, **keywords):
         global sec_per_word
@@ -209,11 +256,11 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
     def on_cancel(self, *args, **keywords):
         self.parentApp.switchFormPrevious()
 
-    def c_add_to_pocket(self, *args, **keywords):
-        npyscreen.notify('Adding to Pocket...')
-        response = add_to_pocket(dict(self.value)['url'])
+    def c_send_to_pocket(self, *args, **keywords):
+        npyscreen.notify('Sending to Pocket...')
+        response = send_to_pocket(dict(self.value)['url'])
         if response['status'] == 1:
-            npyscreen.notify('Added!')
+            npyscreen.notify('Sent!')
             time.sleep(1)
 
 
@@ -234,6 +281,8 @@ class FeedAdd(npyscreen.ActionForm):
                 npyscreen.notify_ok_cancel("Failed to add feed.", title = "Error")
             else:
                 md.update_feeditems(session, feed_id)
+                npyscreen.notify('Feed added!')
+                time.sleep(0.75)
         self.parentApp.switchFormPrevious()
 
     def on_cancel(self, *args, **keywords):

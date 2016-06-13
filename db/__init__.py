@@ -25,7 +25,8 @@ class session_scope():
 
 
 def initdb(path = db_path):
-    feed_Tbl_Create = '''
+    table_statements = []
+    table_statements += ['''
     CREATE TABLE IF NOT EXISTS Feed (
          feed_id INTEGER NOT NULL,
          title TEXT,
@@ -37,19 +38,9 @@ def initdb(path = db_path):
          PRIMARY KEY (feed_id),
          CONSTRAINT uix_0 UNIQUE (title, url)
     );
-    '''
+    ''']
 
-    feed_Tbl_Create = '''
-        CREATE TABLE IF NOT EXISTS ReadAnalytics (
-             feeditem_id INTEGER NOT NULL,
-             word_count INTEGER,
-             time_to_read_sec INTEGER,
-             date_read TEXT,
-             PRIMARY KEY (feeditem_id, date_read)
-        );
-        '''
-
-    feedItem_Tbl_Create = '''
+    table_statements += ['''
     CREATE TABLE IF NOT EXISTS FeedItem (
         feeditem_id INTEGER NOT NULL,
         feed_id INTEGER NOT NULL,
@@ -66,12 +57,29 @@ def initdb(path = db_path):
         FOREIGN KEY(feed_id) REFERENCES "Feed" (feed_id),
         CHECK (is_read IN (0, 1))
     );
-    '''
+    ''']
+
+    table_statements += ['''
+        CREATE VIRTUAL TABLE IF NOT EXISTS FTS_FeedItem USING fts4(
+            feeditem_id INTEGER,
+            content TEXT
+        );
+    ''']
+
+    table_statements += ['''
+        CREATE TABLE IF NOT EXISTS ReadAnalytics (
+             feeditem_id INTEGER NOT NULL,
+             word_count INTEGER,
+             time_to_read_sec INTEGER,
+             date_read TEXT,
+             PRIMARY KEY (feeditem_id, date_read)
+        );
+    ''']
 
     print "Initializing Database..."
     try:
         with session_scope(path) as db:
-            db.execute(feedItem_Tbl_Create)
-            db.execute(feed_Tbl_Create)
+            for table_statement in table_statements:
+                db.execute(table_statement)
     except:
         print "Error Initializing Database: {}".format(str(sys.exc_info()[1]))
