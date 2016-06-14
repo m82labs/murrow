@@ -218,7 +218,10 @@ def update_read_speed(session):
     get_read_data_qry = 'SELECT (time_to_read_sec/word_count) AS sec_word FROM ReadAnalytics;'
     data = [i['sec_word'] for i in session.execute(get_read_data_qry)]
     trimmed_data = sorted(data)[int(math.ceil((len(data) - 1) * .1)):int(math.floor((len(data) - 1) * .9))]
-    return sum(trimmed_data) / len(trimmed_data)
+    if len(trimmed_data) == 0:
+        return 0
+    else:
+        return sum(trimmed_data) / len(trimmed_data)
 
 
 def background_updater(minutes):
