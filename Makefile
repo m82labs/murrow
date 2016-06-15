@@ -1,7 +1,7 @@
 install:
 	@if [ -f '/usr/bin/figlet' ]; then figlet 'MURROW RSS'; fi
 	@echo 'Installing Murrow RSS'
-	@pip install -r requirements
+	@pip3 install -r requirements
 	@mkdir -p /usr/bin/murrow_rss
 	@cp -R ./* /usr/bin/murrow_rss/
 	@chmod +x /usr/bin/murrow_rss/murrow.py

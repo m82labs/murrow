@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os, sys
 import sqlite3
 
@@ -76,10 +77,10 @@ def initdb(path = db_path):
         );
     ''']
 
-    print "Initializing Database..."
+    print("Initializing Database...")
     try:
         with session_scope(path) as db:
             for table_statement in table_statements:
                 db.execute(table_statement)
     except:
-        print "Error Initializing Database: {}".format(str(sys.exc_info()[1]))
+        print("Error Initializing Database: {}".format(str(sys.exc_info()[1])))

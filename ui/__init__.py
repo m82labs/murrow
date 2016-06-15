@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import npyscreen
 import time
 import datetime
@@ -15,7 +15,7 @@ class SearchController(npyscreen.ActionControllerSimple):
         self.add_action('^Search: ..*', self.run_search, False)
 
     def run_search(self, command_line, widget_proxy, live):
-        print "test"
+        print("test")
         search_qry = command_line[8:]
         search_req = [-1, {'title': 'Search', 'description': 'Results'}, search_qry]
         self.parent.parentApp.getForm('FEEDITEMLIST').value = search_req
@@ -31,7 +31,7 @@ class FeedList(npyscreen.MultiLineAction):
         Override the default display with a unicode variant.
         """
         try:
-            r_str = unicode("{0:3} | u:{1:2} | {2}{3}").format(vl[0], vl[1]['unread_count'], vl[1]['title'], ' - ' + vl[1]['description'] if vl[1]['description'] else ' ')
+            r_str = str("{0:3} | u:{1:2} | {2}{3}").format(vl[0], vl[1]['unread_count'], vl[1]['title'], ' - ' + vl[1]['description'] if vl[1]['description'] else ' ')
             return r_str
         except ReferenceError:
             return '****REFERENCE ERROR****'
@@ -106,7 +106,7 @@ class FeedItemList(npyscreen.MultiLineAction):
         :return:
         """
         try:
-            return unicode("{} |{}| {}").format(
+            return str("{} |{}| {}").format(
                 vl['date_updated'],
                 ' ' if vl['is_read'] else 'U',
                 vl['title']
@@ -155,7 +155,7 @@ class FeedItemListDisplay(npyscreen.FormMuttActive):
     def beforeEditing(self):
         feed = self.value[1]
         # --========= Set title bar text =========-- #
-        self.wStatus1.value = unicode("[Murrow] {} {} ").format(
+        self.wStatus1.value = str("[Murrow] {} {} ").format(
             feed['title'],
             '- ' + feed['description'] if len(feed['description']) > 0 else ''
         )
@@ -184,7 +184,7 @@ class MyPager(npyscreen.Pager):
         super(MyPager, self).__init__(*args, **keywords)
 
     def display_value(self,vl):
-        return unicode(vl)
+        return str(vl)
 
 
 class FeedItemSingleDisplay(npyscreen.ActionForm):
@@ -211,7 +211,7 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         self.read_time.editable = False
         self.div2 = self.add(npyscreen.FixedText, name = "Div2")
         self.div2.editable = False
-        self.content = self.add(MyPager, wrap = True, autowrap = True, name = "Content")
+        self.content = self.add(npyscreen.Pager, wrap = True, autowrap = True, name = "Content")
 
     def beforeEditing(self):
         global sec_per_word
@@ -221,7 +221,14 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
         self.start_read = datetime.datetime.utcnow()
         self.title.value = fi['title'].upper()
         self.author.value = fi['author']
-        self.read_time.value = "Read time ~ " + str( round(((sec_per_word*self.word_count)/60)*2.0)/2.0 ) + "minutes"
+
+        read_time = round(((sec_per_word*self.word_count)/60)*2.0)/2.0
+        if read_time < 1:
+            read_time_str = '< 1 minute'
+        else:
+            read_time_str = '~ {} minutes'.format(read_time)
+
+        self.read_time.value = "Read time " + read_time_str
         self.div2.value = "\n"
 
     def get_help(self, *args, **keywords):
@@ -240,7 +247,7 @@ class FeedItemSingleDisplay(npyscreen.ActionForm):
             message = "Title: " + fi['title'] +
                       "\nAuthor: " + fi['author'] +
                       "\nURL: " + fi['url'] +
-                      "\nWord Count: " + unicode(self.word_count) +
+                      "\nWord Count: " + str(self.word_count) +
                       "\nPublished: " + fi['date_published'],
             wide = True
         )

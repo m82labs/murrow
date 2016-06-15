@@ -1,7 +1,5 @@
-#!/usr/bin/env python
-import json
-import os
-from pocket import Pocket, PocketException
+# -*- coding: utf-8 -*-
+from pocket import Pocket
 from config import configuration as mconfig
 
 

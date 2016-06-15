@@ -1,12 +1,11 @@
+# -*- coding: utf-8 -*-
 import feedparser
 import html2text
-import sys
 import math
 import pytz
 import re
 from time import mktime,sleep
-from dateutil import parser
-from datetime import datetime, timedelta
+from datetime import datetime
 from db import session_scope
 
 

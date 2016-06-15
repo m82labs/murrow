@@ -1,5 +1,5 @@
 # Murrow RSS Feed Aggregator #
-A simple curses-based RSS feed aggregator. This is an educational project, more advanced features will be added as I learn more.
+A simple python3 and curses-based RSS feed aggregator. This is an educational project, more advanced features will be added as I learn more.
 
 ###Current Features (however mundane they may be!):###
 - 100% Keyboard navigation
